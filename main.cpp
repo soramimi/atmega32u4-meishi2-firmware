@@ -9,6 +9,16 @@ extern "C" {
 #include "usb.h"
 }
 
+#define SCALE 125
+uint16_t _scale = 0;
+ISR(TIMER0_OVF_vect, ISR_NOBLOCK)
+{
+	_scale += 16;
+	if (_scale >= SCALE) { // 1ms interval
+		_scale -= SCALE;
+	}
+}
+
 void clear_key(uint8_t key)
 {
 	if (key > 0) {
@@ -51,7 +61,6 @@ void press_key(uint8_t key)
 	keyboard_data[1] = 0;
 }
 
-
 void select_row(uint8_t row)
 {
 	uint8_t d = PORTD;
@@ -74,11 +83,11 @@ uint8_t read_bits()
 {
 	uint8_t v = 0;
 	uint8_t f = PINF;
-	if (f & 0x20) { // C0 (PF5)
-		v |= 0x01;
-	}
-	if (f & 0x40) { // C1 (PF6)
+	if (!(f & 0x20)) { // C0 (PF5)
 		v |= 0x02;
+	}
+	if (!(f & 0x40)) { // C1 (PF6)
+		v |= 0x01;
 	}
 	return v;
 }
@@ -151,16 +160,22 @@ int main()
 	MCUCR |= 0x80;
 	MCUCR |= 0x80;
 
-	DDRB = 0x01; // LED output
+	// LED output
+	PORTB = 0x01;
+	DDRB = 0x01;
 
-	// COL pins: input with pull-up
 	// ROW pins: output
-	DDRD = 0x80;
-	DDRE = 0x40;
-	DDRF = 0x00;
 	PORTD = 0x80;
 	PORTE = 0x40;
+	DDRD = 0x80;
+	DDRE = 0x40;
+
+	// COL pins: input with pull-up
 	PORTF = 0x60;
+	DDRF = 0x00;
+
+	// pull-up enable
+	MCUCR &= ~0x10;
 
 	TCCR0B = 0x02; // 1/8 prescaling
 	TIMSK0 |= 1 << TOIE0;
@@ -172,24 +187,30 @@ int main()
 
 	sei();  // enable interrupts
 
+	static uint8_t keymap[] = {
+		KEY_Q,
+		KEY_W,
+		KEY_E,
+		KEY_R,
+	};
+
 	while (1) {
 		static uint8_t bits_last = 0;
 		uint8_t bits_curr = scan_keys();
 		if (bits_curr != bits_last) {
-			auto PressKey = [&](uint8_t code, bool bit){
-				if ((bits_curr ^ bits_last) & bit) {
-					if (bits_curr & bit) {
+			uint8_t diff = bits_curr ^ bits_last;
+			for (uint8_t i = 0; i < 4; i++) {
+				uint8_t mask = 0x08 >> i;
+				if (diff & mask) {
+					uint8_t code = keymap[i];
+					if (bits_curr & mask) {
 						press_key(code);
 					} else {
 						release_key(code);
 					}
 					key_changed = true;
 				}
-			};
-			PressKey(KEY_Q, 0x08);
-			PressKey(KEY_W, 0x04);
-			PressKey(KEY_E, 0x02);
-			PressKey(KEY_R, 0x01);
+			}
 			if (key_changed) {
 				key_changed = false;
 				usb_keyboard_send();

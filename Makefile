@@ -25,5 +25,5 @@ clean:
 	rm -f *.elf
 	rm -f *.hex
 
-write: main.hex
-	avrdude -c avrisp -P /dev/ttyUSB0 -b 19200 -p m32u4 -U hfuse:w:0xd9:m  -U lfuse:w:0x5e:m -U flash:w:$(TARGET).hex
+write: $(TARGET).hex
+	avrdude -c avrisp -P /dev/ttyACM0 -b 19200 -p m32u4 -U hfuse:w:0xd9:m  -U lfuse:w:0x5e:m -U flash:w:$(TARGET).hex
